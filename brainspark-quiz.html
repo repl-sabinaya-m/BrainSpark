@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>BrainSpark — Multiplayer Quiz</title>
+<meta name="description" content="AI-powered multiplayer quiz game. Create teams, share a code, compete live."/>
+
+<!-- Preload fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700;800&family=Outfit:wght@300;400;500&display=swap" rel="stylesheet"/>
+
+<!-- React + Babel via CDN (no build step needed) -->
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body,#root{min-height:100vh;background:#080810;}
+  body{overflow-x:hidden;}
+
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  @keyframes popIn{0%{transform:scale(.95);opacity:0}100%{transform:scale(1);opacity:1}}
+
+  .root{
+    min-height:100vh;
+    background:#080810;
+    color:#fff;
+    font-family:'Outfit',sans-serif;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    padding:20px;position:relative;overflow:hidden;
+  }
+  .root::before{
+    content:'';position:fixed;top:-40%;left:-30%;width:80%;height:80%;
+    background:radial-gradient(ellipse,rgba(108,99,255,.07) 0%,transparent 70%);
+    pointer-events:none;
+  }
+  .root::after{
+    content:'';position:fixed;bottom:-30%;right:-20%;width:60%;height:60%;
+    background:radial-gradient(ellipse,rgba(0,212,170,.06) 0%,transparent 70%);
+    pointer-events:none;
+  }
+
+  .card{
+    width:100%;max-width:640px;
+    background:rgba(255,255,255,.035);
+    border:1px solid rgba(255,255,255,.07);
+    border-radius:28px;padding:36px;
+    backdrop-filter:blur(24px);
+    position:relative;z-index:1;
+    animation:popIn .35s ease;
+  }
+  .card-sm{max-width:480px;}
+
+  h1{font-family:'Bricolage Grotesque',sans-serif;font-size:2.8rem;font-weight:800;letter-spacing:-1.5px;line-height:1.05;}
+  h2{font-family:'Bricolage Grotesque',sans-serif;font-size:1.6rem;font-weight:700;letter-spacing:-.5px;}
+  h3{font-family:'Bricolage Grotesque',sans-serif;font-size:1.1rem;font-weight:600;}
+
+  .accent{color:#6c63ff;}
+  .teal{color:#00d4aa;}
+  .muted{color:rgba(255,255,255,.4);font-size:.9rem;font-weight:300;}
+
+  .btn{
+    padding:13px 20px;border-radius:14px;border:none;
+    font-family:'Outfit',sans-serif;font-size:.95rem;font-weight:500;
+    cursor:pointer;transition:all .2s;
+  }
+  .btn-primary{background:linear-gradient(135deg,#6c63ff,#00d4aa);color:#fff;width:100%;}
+  .btn-primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 30px rgba(108,99,255,.35);}
+  .btn-primary:disabled{opacity:.3;cursor:not-allowed;}
+  .btn-ghost{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.8);}
+  .btn-ghost:hover{background:rgba(255,255,255,.1);}
+  .btn-danger{background:rgba(255,71,87,.15);border:1px solid rgba(255,71,87,.3);color:#ff4757;}
+  .btn-danger:hover{background:rgba(255,71,87,.25);}
+
+  .input{
+    width:100%;padding:13px 16px;border-radius:14px;
+    border:1.5px solid rgba(255,255,255,.1);
+    background:rgba(255,255,255,.05);color:#fff;
+    font-family:'Outfit',sans-serif;font-size:.95rem;
+    outline:none;transition:border-color .2s;
+  }
+  .input:focus{border-color:#6c63ff;}
+  .input::placeholder{color:rgba(255,255,255,.25);}
+
+  .row{display:flex;gap:10px;align-items:center;}
+  .col{display:flex;flex-direction:column;gap:10px;}
+
+  .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:500;}
+  .tag-purple{background:rgba(108,99,255,.15);border:1px solid rgba(108,99,255,.3);color:#a89eff;}
+  .tag-teal{background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.25);color:#00d4aa;}
+  .tag-orange{background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.25);color:#f5a623;}
+  .tag-red{background:rgba(255,71,87,.12);border:1px solid rgba(255,71,87,.25);color:#ff4757;}
+
+  .divider{height:1px;background:rgba(255,255,255,.07);margin:20px 0;}
+
+  .code-box{
+    font-family:'Bricolage Grotesque',sans-serif;
+    font-size:2.5rem;font-weight:800;letter-spacing:8px;
+    color:#6c63ff;text-align:center;padding:20px;
+    background:rgba(108,99,255,.08);
+    border:2px dashed rgba(108,99,255,.3);border-radius:16px;
+  }
+
+  .player-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;
+    background:rgba(255,255,255,.03);
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:12px;
+  }
+  .avatar{
+    width:36px;height:36px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:1rem;font-weight:700;
+    font-family:'Bricolage Grotesque',sans-serif;flex-shrink:0;
+  }
+
+  .opt-btn{
+    display:flex;align-items:center;gap:12px;
+    padding:13px 16px;border-radius:13px;
+    border:1.5px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.03);
+    color:rgba(255,255,255,.85);
+    font-family:'Outfit',sans-serif;font-size:.92rem;
+    cursor:pointer;transition:all .2s;text-align:left;width:100%;
+  }
+  .opt-btn:hover:not(:disabled){background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16);transform:translateX(3px);}
+  .opt-btn.correct{border-color:#00d4aa;background:rgba(0,212,170,.1);color:#00d4aa;}
+  .opt-btn.wrong{border-color:#ff4757;background:rgba(255,71,87,.08);color:#ff4757;}
+  .opt-btn.neutral{opacity:.35;}
+  .opt-letter{
+    width:26px;height:26px;border-radius:7px;
+    background:rgba(255,255,255,.08);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Bricolage Grotesque',sans-serif;font-size:.75rem;font-weight:700;flex-shrink:0;
+  }
+
+  .timer-bar{width:100%;height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-bottom:20px;}
+  .timer-fill{height:100%;border-radius:3px;transition:background .3s;}
+
+  .lb-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:14px;margin-bottom:8px;}
+  .lb-rank{font-family:'Bricolage Grotesque',sans-serif;font-size:1.3rem;font-weight:800;width:36px;}
+
+  .spinner{width:44px;height:44px;border:3px solid rgba(255,255,255,.08);border-top-color:#6c63ff;border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 16px;}
+  .pulse{animation:pulse 2s ease infinite;}
+
+  .notification{
+    position:fixed;top:20px;right:20px;
+    padding:12px 20px;border-radius:14px;
+    background:rgba(108,99,255,.95);color:#fff;
+    font-family:'Outfit',sans-serif;font-size:.9rem;font-weight:500;
+    z-index:9999;animation:slideIn .3s ease;backdrop-filter:blur(10px);
+    box-shadow:0 4px 20px rgba(108,99,255,.4);
+  }
+
+  .cat-btn{
+    background:rgba(255,255,255,.04);border:2px solid rgba(255,255,255,.07);
+    border-radius:14px;padding:14px 8px;cursor:pointer;transition:all .2s;text-align:center;color:#fff;
+  }
+  .cat-btn:hover{background:rgba(255,255,255,.08);transform:translateY(-2px);}
+
+  .progress-dots{display:flex;gap:6px;justify-content:center;margin-top:16px;}
+  .pdot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15);transition:all .3s;}
+  .pdot.active{background:#6c63ff;width:24px;border-radius:4px;}
+  .pdot.done{background:#00d4aa;}
+
+  .section-lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,.3);margin-bottom:10px;font-weight:500;}
+  .expl{margin-top:14px;padding:13px 16px;border-radius:12px;background:rgba(255,255,255,.04);border-left:3px solid #6c63ff;font-size:.85rem;color:rgba(255,255,255,.6);line-height:1.6;animation:fadeIn .3s ease;}
+  .score-big{font-family:'Bricolage Grotesque',sans-serif;font-size:4.5rem;font-weight:800;line-height:1;}
+
+  .toggle{
+    width:44px;height:24px;border-radius:12px;cursor:pointer;
+    position:relative;transition:background .2s;flex-shrink:0;
+  }
+  .toggle-knob{
+    width:18px;height:18px;border-radius:50%;background:#fff;
+    position:absolute;top:3px;transition:left .2s;
+  }
+
+  .copy-btn{
+    padding:6px 14px;border-radius:10px;border:1px solid rgba(108,99,255,.4);
+    background:rgba(108,99,255,.12);color:#a89eff;
+    font-family:'Outfit',sans-serif;font-size:.8rem;cursor:pointer;transition:all .2s;
+  }
+  .copy-btn:hover{background:rgba(108,99,255,.22);}
+
+  @media(max-width:480px){
+    .card{padding:24px;}
+    h1{font-size:2.2rem;}
+    .code-box{font-size:2rem;letter-spacing:5px;}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const CATEGORIES = [
+  { id:"science",    label:"Science",    emoji:"⚗️",  color:"#00d4aa" },
+  { id:"history",    label:"History",    emoji:"🏛️",  color:"#f5a623" },
+  { id:"geography",  label:"Geography",  emoji:"🌍",  color:"#4a9eff" },
+  { id:"pop_culture",label:"Pop Culture",emoji:"🎬",  color:"#ff6b9d" },
+  { id:"sports",     label:"Sports",     emoji:"⚽",  color:"#a8e063" },
+];
+const ADMIN_PASSWORD = "admin123";
+const POLL_MS = 2500;
+const TIMER_MS = 20000;
+const RANK_EMOJI = ["🥇","🥈","🥉"];
+
+const SYSTEM_PROMPT = `You are a quiz master. Generate exactly 5 trivia questions as a JSON array.
+Each object: {"question":string,"options":[4 strings],"answer":number 0-3,"explanation":string}
+Return ONLY valid JSON array. No markdown, no extra text.`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const genCode = () => Math.random().toString(36).slice(2,7).toUpperCase();
+const genId   = () => Math.random().toString(36).slice(2,10);
+
+const AVATAR_COLORS = ["#6c63ff","#00d4aa","#f5a623","#ff6b9d","#4a9eff","#a8e063"];
+const avatarColor = name => AVATAR_COLORS[(name?.charCodeAt(0)||0) % AVATAR_COLORS.length];
+
+// ── Shared Storage helpers ────────────────────────────────────────────────────
+async function saveGame(g) {
+  try { await window.storage.set(`game:${g.code}`, JSON.stringify(g), true); } catch(_) {}
+}
+async function loadGame(code) {
+  try { const r = await window.storage.get(`game:${code}`, true); return r ? JSON.parse(r.value) : null; }
+  catch(_) { return null; }
+}
+async function savePlayer(code, p) {
+  try { await window.storage.set(`player:${code}:${p.id}`, JSON.stringify(p), true); } catch(_) {}
+}
+async function loadPlayers(code) {
+  try {
+    const r = await window.storage.list(`player:${code}:`, true);
+    if (!r?.keys?.length) return [];
+    const all = await Promise.all(r.keys.map(async k => {
+      try { const v = await window.storage.get(k, true); return v ? JSON.parse(v.value) : null; }
+      catch(_) { return null; }
+    }));
+    return all.filter(Boolean);
+  } catch(_) { return []; }
+}
+
+// ── API call ──────────────────────────────────────────────────────────────────
+async function fetchQuestions(category, difficulty) {
+  const cat = CATEGORIES.find(c => c.id === category);
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      model:"claude-sonnet-4-20250514",
+      max_tokens:1000,
+      system:SYSTEM_PROMPT,
+      messages:[{role:"user", content:`Generate 5 ${difficulty} trivia questions about ${cat.label}. Make them engaging.`}]
+    })
+  });
+  const data = await resp.json();
+  const text = data.content?.find(b=>b.type==="text")?.text || "[]";
+  return JSON.parse(text.trim());
+}
+
+// ── Timer Bar ─────────────────────────────────────────────────────────────────
+function TimerBar({ active, qKey, onTimeout }) {
+  const [pct, setPct] = useState(100);
+  const ivRef = useRef(null);
+  const t0 = useRef(null);
+  useEffect(() => {
+    setPct(100);
+    if (!active) return;
+    t0.current = Date.now();
+    ivRef.current = setInterval(() => {
+      const rem = Math.max(0, 100 - (Date.now()-t0.current)/TIMER_MS*100);
+      setPct(rem);
+      if (rem === 0) { clearInterval(ivRef.current); onTimeout(); }
+    }, 50);
+    return () => clearInterval(ivRef.current);
+  }, [active, qKey]);
+  const color = pct>60?"#00d4aa":pct>30?"#f5a623":"#ff4757";
+  return (
+    <div className="timer-bar">
+      <div className="timer-fill" style={{width:`${pct}%`,background:color,boxShadow:`0 0 8px ${color}`}}/>
+    </div>
+  );
+}
+
+// ── Notification ──────────────────────────────────────────────────────────────
+function Toast({ msg }) {
+  if (!msg) return null;
+  return <div className="notification">{msg}</div>;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Main App
+// ══════════════════════════════════════════════════════════════════════════════
+function App() {
+  // ── App state ───────────────────────────────────────────────────────────────
+  const [view, setView]               = useState("landing");
+  const [adminPw, setAdminPw]         = useState("");
+  const [game, setGame]               = useState(null);
+  const [players, setPlayers]         = useState([]);
+  const [playerId, setPlayerId]       = useState(null);
+  const [playerName, setPlayerName]   = useState("");
+  const [joinCode, setJoinCode]       = useState("");
+  const [notification, setNotif]      = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState("");
+
+  // Quiz play state
+  const [currentQ, setCurrentQ]       = useState(0);
+  const [selected, setSelected]       = useState(null);
+  const [showExpl, setShowExpl]       = useState(false);
+  const [playerScore, setPlayerScore] = useState(0);
+  const [timerActive, setTimerActive] = useState(false);
+
+  // Admin game config
+  const [gameName, setGameName]       = useState("");
+  const [category, setCategory]       = useState("science");
+  const [difficulty, setDifficulty]   = useState("medium");
+  const [teamsMode, setTeamsMode]     = useState(false);
+  const [teamsList, setTeamsList]     = useState([]);
+  const [teamInput, setTeamInput]     = useState("");
+  const [playerTeam, setPlayerTeam]   = useState("");
+
+  const pollRef = useRef(null);
+
+  const notify = (msg, ms=3500) => { setNotif(msg); setTimeout(()=>setNotif(""), ms); };
+
+  // ── Polling ──────────────────────────────────────────────────────────────────
+  const startPolling = useCallback((code, isAdmin) => {
+    clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      const g = await loadGame(code);
+      if (!g) return;
+      setGame(g);
+      const ps = await loadPlayers(code);
+      setPlayers(ps);
+      if (!isAdmin) {
+        if (g.status==="active")   setView(v => v==="lobby"||v==="quiz"  ? (v==="lobby"?"quiz":v) : v);
+        if (g.status==="finished") setView(v => v!=="results" ? "results" : v);
+      }
+    }, POLL_MS);
+  }, []);
+
+  // Trigger quiz start when game goes active
+  useEffect(() => {
+    if (game?.status==="active" && view==="lobby") { setView("quiz"); setTimerActive(true); }
+    if (game?.status==="finished" && (view==="quiz"||view==="lobby")) setView("results");
+  }, [game?.status]);
+
+  useEffect(() => () => clearInterval(pollRef.current), []);
+
+  // ── Admin login ───────────────────────────────────────────────────────────────
+  const adminLogin = () => {
+    if (adminPw === ADMIN_PASSWORD) { setView("admin"); setError(""); }
+    else setError("Incorrect password.");
+  };
+
+  // ── Create game ───────────────────────────────────────────────────────────────
+  const createGame = async () => {
+    if (!gameName.trim()) return setError("Please enter a game name.");
+    setLoading(true); setError("");
+    try {
+      const questions = await fetchQuestions(category, difficulty);
+      const code = genCode();
+      const g = {
+        code, name: gameName.trim(), category, difficulty,
+        questions, status:"waiting",
+        teamsMode, teams: teamsMode ? [...teamsList] : [],
+        createdAt: Date.now(), currentQuestion:0,
+      };
+      await saveGame(g);
+      setGame(g); setPlayers([]);
+      startPolling(code, true);
+      setView("admin-game");
+      notify("🎉 Game ready! Share the code with players.");
+    } catch(e) { setError("Failed to generate questions. Please try again."); }
+    setLoading(false);
+  };
+
+  // ── Start / End ───────────────────────────────────────────────────────────────
+  const startGame = async () => {
+    if (players.length === 0) return setError("Need at least 1 player to start.");
+    const g = {...game, status:"active", startedAt:Date.now()};
+    await saveGame(g); setGame(g); notify("🚀 Game started!");
+  };
+  const endGame = async () => {
+    const g = {...game, status:"finished"};
+    await saveGame(g); setGame(g); setView("admin-results");
+    clearInterval(pollRef.current);
+  };
+
+  // ── Join game ─────────────────────────────────────────────────────────────────
+  const joinGame = async () => {
+    if (!joinCode.trim() || !playerName.trim()) return setError("Please fill in all fields.");
+    if (game?.teamsMode && !playerTeam) return setError("Please select a team.");
+    setLoading(true); setError("");
+    const g = await loadGame(joinCode.trim().toUpperCase());
+    if (!g) { setError("Game not found. Double-check the code."); setLoading(false); return; }
+    if (g.status==="finished") { setError("This game has already ended."); setLoading(false); return; }
+    const id = genId();
+    const player = { id, name:playerName.trim(), team:playerTeam||null, score:0, answers:[], joinedAt:Date.now() };
+    await savePlayer(g.code, player);
+    setPlayerId(id); setGame(g);
+    setCurrentQ(0); setSelected(null); setPlayerScore(0);
+    startPolling(g.code, false);
+    setView(g.status==="active" ? "quiz" : "lobby");
+    setLoading(false);
+  };
+
+  // ── Answer handler ────────────────────────────────────────────────────────────
+  const handleAnswer = async (idx) => {
+    if (selected !== null) return;
+    setTimerActive(false); setSelected(idx);
+    const correct = idx === game.questions[currentQ].answer;
+    if (correct) setPlayerScore(s => s+1);
+    setShowExpl(true);
+    // persist
+    const ps = await loadPlayers(game.code);
+    const me = ps.find(p => p.id === playerId);
+    if (me) {
+      me.answers = [...(me.answers||[]), {q:currentQ, selected:idx, correct}];
+      me.score = (me.score||0) + (correct?1:0);
+      await savePlayer(game.code, me);
+    }
+  };
+
+  const handleTimeout = () => { if (selected===null) handleAnswer(-1); };
+
+  const nextQuestion = () => {
+    if (currentQ+1 >= game.questions.length) { setView("results"); clearInterval(pollRef.current); }
+    else { setCurrentQ(q=>q+1); setSelected(null); setShowExpl(false); setTimerActive(true); }
+  };
+
+  useEffect(() => { if (view==="quiz") setTimerActive(true); }, [view, currentQ]);
+
+  // ── Derived data ──────────────────────────────────────────────────────────────
+  const leaderboard = [...players].sort((a,b) => (b.score||0)-(a.score||0));
+  const teamScores  = game?.teamsMode
+    ? Object.entries(players.reduce((acc,p) => { if(p.team) acc[p.team]=(acc[p.team]||0)+(p.score||0); return acc; },{}))
+        .sort((a,b)=>b[1]-a[1])
+    : [];
+
+  const q   = game?.questions?.[currentQ];
+  const cat = CATEGORIES.find(c=>c.id===game?.category);
+
+  const copyCode = () => { navigator.clipboard?.writeText(game.code); notify("📋 Code copied!"); };
+
+  // ════════════════════════════════════════════════════════════════════════════
+  return (
+    <>
+      <Toast msg={notification}/>
+      <div className="root">
+
+        {/* ── LANDING ──────────────────────────────────────────────────────── */}
+        {view==="landing" && (
+          <div className="card card-sm" style={{textAlign:"center"}}>
+            <div style={{fontSize:"3.5rem",marginBottom:12}}>🧠</div>
+            <h1>Brain<span className="accent">Spark</span></h1>
+            <p className="muted" style={{margin:"10px 0 32px",lineHeight:1.6}}>
+              AI-generated questions · Teams or solo · Real-time leaderboard
+            </p>
+            <div className="col">
+              <button className="btn btn-primary" onClick={()=>{setView("admin-login");setError("");}}>
+                🔐 Admin Panel — Create a Game
+              </button>
+              <button className="btn btn-ghost" onClick={()=>{setView("join");setError("");}}>
+                🎮 Join a Game
+              </button>
+            </div>
+            <p className="muted" style={{marginTop:20,fontSize:".75rem"}}>
+              Powered by Claude AI · Questions generated fresh every game
+            </p>
+          </div>
+        )}
+
+        {/* ── ADMIN LOGIN ───────────────────────────────────────────────────── */}
+        {view==="admin-login" && (
+          <div className="card card-sm">
+            <button className="btn btn-ghost" style={{width:"auto",marginBottom:20}} onClick={()=>setView("landing")}>← Back</button>
+            <h2>Admin <span className="accent">Access</span></h2>
+            <p className="muted" style={{margin:"6px 0 24px"}}>Default password: <code style={{color:"#6c63ff",background:"rgba(108,99,255,.12)",padding:"2px 8px",borderRadius:6}}>admin123</code></p>
+            <div className="col">
+              <input className="input" type="password" placeholder="Admin password"
+                value={adminPw} onChange={e=>setAdminPw(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&adminLogin()}/>
+              {error&&<p style={{color:"#ff4757",fontSize:".85rem"}}>{error}</p>}
+              <button className="btn btn-primary" onClick={adminLogin}>Unlock →</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── ADMIN CREATE ──────────────────────────────────────────────────── */}
+        {view==="admin" && (
+          <div className="card">
+            <div className="row" style={{justifyContent:"space-between",marginBottom:24}}>
+              <div>
+                <span className="tag tag-purple">👑 Admin Panel</span>
+                <h2 style={{marginTop:8}}>New <span className="accent">Game</span></h2>
+              </div>
+              <button className="btn btn-ghost" style={{width:"auto"}} onClick={()=>setView("landing")}>Exit</button>
+            </div>
+
+            <div className="col">
+              <div>
+                <div className="section-lbl">Game Name</div>
+                <input className="input" placeholder='e.g. "Friday Night Trivia"'
+                  value={gameName} onChange={e=>setGameName(e.target.value)}/>
+              </div>
+
+              <div>
+                <div className="section-lbl">Category</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
+                  {CATEGORIES.map(c=>(
+                    <button key={c.id} className={`cat-btn${category===c.id?" sel":""}`}
+                      style={{border:`2px solid ${category===c.id?c.color:"rgba(255,255,255,.07)"}`,
+                             background:category===c.id?`${c.color}18`:"rgba(255,255,255,.04)"}}
+                      onClick={()=>setCategory(c.id)}>
+                      <div style={{fontSize:"1.5rem"}}>{c.emoji}</div>
+                      <div style={{fontSize:".62rem",marginTop:4,color:category===c.id?c.color:"rgba(255,255,255,.6)"}}>{c.label}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="section-lbl">Difficulty</div>
+                <div className="row">
+                  {["easy","medium","hard"].map(d=>(
+                    <button key={d} className="btn btn-ghost" style={{
+                      flex:1,
+                      border:difficulty===d?"1.5px solid #6c63ff":"1px solid rgba(255,255,255,.1)",
+                      color:difficulty===d?"#a89eff":"rgba(255,255,255,.7)",
+                      background:difficulty===d?"rgba(108,99,255,.1)":"rgba(255,255,255,.06)"
+                    }} onClick={()=>setDifficulty(d)}>
+                      {d[0].toUpperCase()+d.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="divider"/>
+
+              <div>
+                <div className="row" style={{justifyContent:"space-between",marginBottom:12}}>
+                  <div>
+                    <div className="section-lbl" style={{marginBottom:2}}>Teams Mode</div>
+                    <p className="muted" style={{fontSize:".8rem"}}>Players pick a team when joining</p>
+                  </div>
+                  <div className="toggle" style={{background:teamsMode?"#6c63ff":"rgba(255,255,255,.12)"}}
+                    onClick={()=>setTeamsMode(t=>!t)}>
+                    <div className="toggle-knob" style={{left:teamsMode?23:3}}/>
+                  </div>
+                </div>
+
+                {teamsMode&&(
+                  <div className="col">
+                    <div className="row">
+                      <input className="input" placeholder='Team name (press Enter)'
+                        value={teamInput} onChange={e=>setTeamInput(e.target.value)}
+                        onKeyDown={e=>{if(e.key==="Enter"&&teamInput.trim()){setTeamsList(t=>[...t,teamInput.trim()]);setTeamInput("");}}}/>
+                      <button className="btn btn-ghost" style={{width:"auto",whiteSpace:"nowrap"}}
+                        onClick={()=>{if(teamInput.trim()){setTeamsList(t=>[...t,teamInput.trim()]);setTeamInput("");}}}>
+                        + Add
+                      </button>
+                    </div>
+                    {teamsList.length>0&&(
+                      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                        {teamsList.map((t,i)=>(
+                          <span key={i} className="tag tag-purple" style={{cursor:"pointer"}}
+                            onClick={()=>setTeamsList(ts=>ts.filter((_,j)=>j!==i))}>
+                            {t} ✕
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {error&&<p style={{color:"#ff4757",fontSize:".85rem"}}>{error}</p>}
+              <button className="btn btn-primary" disabled={loading} onClick={createGame}>
+                {loading?<><span className="spinner" style={{width:18,height:18,display:"inline-block",marginRight:8,verticalAlign:"middle"}}/>Generating Questions…</>:"🚀 Create Game"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── ADMIN GAME LOBBY ──────────────────────────────────────────────── */}
+        {view==="admin-game"&&game&&(
+          <div className="card">
+            <div className="row" style={{justifyContent:"space-between",marginBottom:4}}>
+              <span className="tag tag-purple">👑 {game.name}</span>
+              <span className={`tag ${game.status==="waiting"?"tag-orange":game.status==="active"?"tag-teal":"tag-red"}`}>
+                {game.status==="waiting"?"⏳ Waiting":game.status==="active"?"▶ Live":"✓ Ended"}
+              </span>
+            </div>
+
+            <div className="section-lbl" style={{marginTop:24,marginBottom:8}}>Game Code — share with players</div>
+            <div className="code-box">{game.code}</div>
+            <div className="row" style={{justifyContent:"center",marginTop:10,gap:8}}>
+              <button className="copy-btn" onClick={copyCode}>📋 Copy Code</button>
+              <span className="muted" style={{fontSize:".78rem"}}>Players → "Join a Game" → enter code</span>
+            </div>
+
+            <div className="divider"/>
+
+            <div className="row" style={{justifyContent:"space-between",marginBottom:12}}>
+              <h3>Players <span style={{color:"#6c63ff"}}>({players.length})</span></h3>
+              {game.status==="waiting"&&<span className="pulse muted" style={{fontSize:".78rem"}}>● Watching for joins…</span>}
+            </div>
+
+            {players.length===0
+              ? <p className="muted" style={{textAlign:"center",padding:"20px 0"}}>No players yet. Share the code!</p>
+              : <div className="col" style={{maxHeight:220,overflowY:"auto",gap:8}}>
+                  {players.map(p=>(
+                    <div key={p.id} className="player-row">
+                      <div className="row" style={{gap:10}}>
+                        <div className="avatar" style={{background:avatarColor(p.name)+"28",color:avatarColor(p.name)}}>
+                          {p.name[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{fontWeight:500}}>{p.name}</div>
+                          {p.team&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)"}}>{p.team}</div>}
+                        </div>
+                      </div>
+                      <span className="tag tag-teal">{p.score||0} pts</span>
+                    </div>
+                  ))}
+                </div>
+            }
+
+            <div className="divider"/>
+            {error&&<p style={{color:"#ff4757",fontSize:".85rem",marginBottom:10}}>{error}</p>}
+
+            <div className="row">
+              {game.status==="waiting"&&(
+                <button className="btn btn-primary" onClick={startGame}>▶ Start Game</button>
+              )}
+              {game.status==="active"&&(
+                <button className="btn btn-danger btn" style={{flex:1}} onClick={endGame}>■ End &amp; Show Results</button>
+              )}
+              <button className="btn btn-ghost" style={{width:"auto"}} onClick={()=>{setView("admin");setGame(null);setPlayers([]);}}>New Game</button>
+            </div>
+
+            {game.status==="active"&&leaderboard.length>0&&(
+              <div style={{marginTop:20}}>
+                <div className="section-lbl">Live Leaderboard</div>
+                {leaderboard.slice(0,8).map((p,i)=>(
+                  <div key={p.id} className="lb-row" style={{
+                    background:i===0?"rgba(108,99,255,.08)":"rgba(255,255,255,.02)",
+                    border:`1px solid ${i===0?"rgba(108,99,255,.2)":"rgba(255,255,255,.05)"}`
+                  }}>
+                    <span className="lb-rank">{RANK_EMOJI[i]||`#${i+1}`}</span>
+                    <div className="avatar" style={{background:avatarColor(p.name)+"22",color:avatarColor(p.name),marginRight:10}}>
+                      {p.name[0].toUpperCase()}
+                    </div>
+                    <span style={{flex:1,fontWeight:500}}>{p.name}</span>
+                    {p.team&&<span style={{fontSize:".75rem",color:"rgba(255,255,255,.35)",marginRight:10}}>{p.team}</span>}
+                    <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,color:"#00d4aa"}}>{p.score||0}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ADMIN RESULTS ─────────────────────────────────────────────────── */}
+        {view==="admin-results"&&(
+          <div className="card">
+            <span className="tag tag-purple" style={{marginBottom:16,display:"inline-block"}}>👑 Final Results</span>
+            <h2>Game <span className="accent">Over!</span></h2>
+
+            {game?.teamsMode&&teamScores.length>0&&(
+              <div style={{margin:"20px 0"}}>
+                <div className="section-lbl">Team Standings</div>
+                {teamScores.map(([team,score],i)=>(
+                  <div key={team} className="lb-row" style={{background:i===0?"rgba(245,166,35,.08)":"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",marginBottom:8}}>
+                    <span className="lb-rank">{RANK_EMOJI[i]||`#${i+1}`}</span>
+                    <span style={{flex:1,fontWeight:600}}>{team}</span>
+                    <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,color:"#f5a623"}}>{score} pts</span>
+                  </div>
+                ))}
+                <div className="divider"/>
+              </div>
+            )}
+
+            <div className="section-lbl">Individual Leaderboard</div>
+            {leaderboard.map((p,i)=>(
+              <div key={p.id} className="lb-row" style={{background:i===0?"rgba(108,99,255,.08)":"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",marginBottom:8}}>
+                <span className="lb-rank">{RANK_EMOJI[i]||`#${i+1}`}</span>
+                <div className="avatar" style={{background:avatarColor(p.name)+"22",color:avatarColor(p.name),marginRight:10}}>
+                  {p.name[0].toUpperCase()}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:500}}>{p.name}</div>
+                  {p.team&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.35)"}}>{p.team}</div>}
+                </div>
+                <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,color:i===0?"#f5a623":"rgba(255,255,255,.7)"}}>
+                  {p.score||0}/{game?.questions?.length||5}
+                </span>
+              </div>
+            ))}
+
+            <div className="divider"/>
+            <button className="btn btn-primary" onClick={()=>{setView("admin");setGame(null);setPlayers([]);}}>
+              + Create Another Game
+            </button>
+          </div>
+        )}
+
+        {/* ── JOIN GAME ─────────────────────────────────────────────────────── */}
+        {view==="join"&&(
+          <div className="card card-sm">
+            <button className="btn btn-ghost" style={{width:"auto",marginBottom:20}} onClick={()=>setView("landing")}>← Back</button>
+            <h2>Join a <span className="accent">Game</span></h2>
+            <p className="muted" style={{margin:"6px 0 24px"}}>Get the 5-letter code from your host</p>
+            <div className="col">
+              <input className="input" placeholder="GAME CODE" value={joinCode}
+                onChange={e=>{setJoinCode(e.target.value.toUpperCase());setError("");}}
+                maxLength={5}
+                style={{textAlign:"center",fontSize:"1.5rem",fontFamily:"'Bricolage Grotesque',sans-serif",letterSpacing:8,fontWeight:700}}/>
+              <input className="input" placeholder="Your name" value={playerName}
+                onChange={e=>setPlayerName(e.target.value)}/>
+              {game?.teamsMode&&game.teams?.length>0&&(
+                <div>
+                  <div className="section-lbl">Pick your team</div>
+                  <div className="col" style={{gap:8}}>
+                    {game.teams.map(t=>(
+                      <button key={t} className="btn btn-ghost" style={{
+                        border:playerTeam===t?"1.5px solid #6c63ff":"1px solid rgba(255,255,255,.1)",
+                        color:playerTeam===t?"#a89eff":"rgba(255,255,255,.7)",
+                        background:playerTeam===t?"rgba(108,99,255,.1)":"rgba(255,255,255,.06)"
+                      }} onClick={()=>setPlayerTeam(t)}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {error&&<p style={{color:"#ff4757",fontSize:".85rem"}}>{error}</p>}
+              <button className="btn btn-primary" disabled={loading} onClick={joinGame}>
+                {loading?"Joining…":"Join Game →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── PLAYER LOBBY ──────────────────────────────────────────────────── */}
+        {view==="lobby"&&(
+          <div className="card card-sm" style={{textAlign:"center"}}>
+            <span className="tag tag-teal" style={{marginBottom:16,display:"inline-flex"}}>✓ Joined · {game?.name}</span>
+            <div style={{fontSize:"2.8rem",margin:"16px 0"}}>⏳</div>
+            <h2>Waiting for<br/><span className="accent">host to start…</span></h2>
+            <p className="muted" style={{margin:"12px 0 24px"}}>
+              Relax! The game will begin automatically.
+            </p>
+            <div className="divider"/>
+            <div style={{textAlign:"left"}}>
+              <div className="section-lbl">In the lobby ({players.length})</div>
+              <div className="col" style={{gap:8}}>
+                {players.map(p=>(
+                  <div key={p.id} className="player-row">
+                    <div className="row" style={{gap:10}}>
+                      <div className="avatar" style={{background:avatarColor(p.name)+"28",color:avatarColor(p.name)}}>
+                        {p.name[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <span style={{fontWeight:500}}>{p.name}</span>
+                        {p.team&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)"}}>{p.team}</div>}
+                      </div>
+                    </div>
+                    {p.id===playerId&&<span className="tag tag-purple">You</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── QUIZ ──────────────────────────────────────────────────────────── */}
+        {view==="quiz"&&q&&(
+          <div className="card">
+            <div className="row" style={{justifyContent:"space-between",marginBottom:6}}>
+              <span className="muted" style={{fontSize:".8rem"}}>Q{currentQ+1} / {game.questions.length}</span>
+              <div className="row" style={{gap:8}}>
+                <span style={{fontSize:".8rem",color:cat?.color}}>{cat?.emoji} {cat?.label}</span>
+                <span className="tag tag-teal">{playerScore} pts</span>
+              </div>
+            </div>
+
+            <TimerBar active={timerActive} qKey={currentQ} onTimeout={handleTimeout}/>
+
+            <p style={{fontSize:"1.1rem",lineHeight:1.65,margin:"8px 0 20px",fontWeight:400}}>
+              {q.question}
+            </p>
+
+            <div className="col" style={{gap:10}}>
+              {q.options.map((opt,i)=>{
+                let cls="opt-btn";
+                if(selected!==null){
+                  if(i===q.answer) cls+=" correct";
+                  else if(i===selected&&selected!==q.answer) cls+=" wrong";
+                  else cls+=" neutral";
+                }
+                return(
+                  <button key={i} className={cls} disabled={selected!==null} onClick={()=>handleAnswer(i)}>
+                    <span className="opt-letter">{["A","B","C","D"][i]}</span>
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+
+            {showExpl&&<div className="expl">💡 {q.explanation}</div>}
+
+            {selected!==null&&(
+              <button className="btn btn-ghost" style={{width:"100%",marginTop:16}} onClick={nextQuestion}>
+                {currentQ+1>=game.questions.length?"See Results →":"Next Question →"}
+              </button>
+            )}
+
+            <div className="progress-dots">
+              {game.questions.map((_,i)=>(
+                <div key={i} className={`pdot${i===currentQ?" active":i<currentQ?" done":""}`}/>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── PLAYER RESULTS ────────────────────────────────────────────────── */}
+        {view==="results"&&(
+          <div className="card card-sm" style={{textAlign:"center"}}>
+            <div style={{fontSize:"2.5rem",marginBottom:8}}>
+              {playerScore===game?.questions?.length?"🏆":playerScore>=3?"🎯":"📚"}
+            </div>
+            <p className="muted">Your final score</p>
+            <div className="score-big" style={{
+              color:playerScore>=4?"#00d4aa":playerScore>=3?"#f5a623":"#ff6b9d",
+              margin:"8px 0 4px"
+            }}>
+              {playerScore}/{game?.questions?.length}
+            </div>
+            <p className="muted" style={{marginBottom:24}}>
+              {playerScore===game?.questions?.length?"Perfect! Absolutely flawless 🔥":
+               playerScore>=4?"Excellent performance!":
+               playerScore>=3?"Good effort!":"Better luck next time!"}
+            </p>
+
+            <div className="divider" style={{margin:"0 0 20px"}}/>
+            <div className="section-lbl">Final Leaderboard</div>
+
+            {leaderboard.map((p,i)=>(
+              <div key={p.id} className="lb-row" style={{
+                background:p.id===playerId?"rgba(108,99,255,.1)":"rgba(255,255,255,.02)",
+                border:`1px solid ${p.id===playerId?"rgba(108,99,255,.3)":"rgba(255,255,255,.05)"}`,
+                marginBottom:8
+              }}>
+                <span className="lb-rank">{RANK_EMOJI[i]||`#${i+1}`}</span>
+                <div className="avatar" style={{background:avatarColor(p.name)+"22",color:avatarColor(p.name),marginRight:10}}>
+                  {p.name[0].toUpperCase()}
+                </div>
+                <div style={{flex:1,textAlign:"left"}}>
+                  <span style={{fontWeight:p.id===playerId?600:400}}>
+                    {p.name} {p.id===playerId&&<span style={{color:"#6c63ff",fontSize:".78rem"}}>(you)</span>}
+                  </span>
+                  {p.team&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.35)"}}>{p.team}</div>}
+                </div>
+                <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,color:i===0?"#f5a623":"rgba(255,255,255,.65)"}}>
+                  {p.score||0}
+                </span>
+              </div>
+            ))}
+
+            <button className="btn btn-primary" style={{marginTop:20}} onClick={()=>{setView("join");setError("");}}>
+              Play Again
+            </button>
+          </div>
+        )}
+
+      </div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
