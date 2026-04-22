@@ -252,11 +252,16 @@ async function loadPlayers(code) {
 }
 
 // ── API call ──────────────────────────────────────────────────────────────────
-async function fetchQuestions(category, difficulty) {
+async function fetchQuestions(category, difficulty, apiKey) {
   const cat = CATEGORIES.find(c => c.id === category);
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method:"POST",
-    headers:{"Content-Type":"application/json"},
+    headers:{
+      "Content-Type":"application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
     body: JSON.stringify({
       model:"claude-sonnet-4-20250514",
       max_tokens:1000,
@@ -264,6 +269,10 @@ async function fetchQuestions(category, difficulty) {
       messages:[{role:"user", content:`Generate 5 ${difficulty} trivia questions about ${cat.label}. Make them engaging.`}]
     })
   });
+  if (!resp.ok) {
+    const err = await resp.json().catch(()=>({}));
+    throw new Error(err?.error?.message || `API error ${resp.status}`);
+  }
   const data = await resp.json();
   const text = data.content?.find(b=>b.type==="text")?.text || "[]";
   return JSON.parse(text.trim());
@@ -306,6 +315,7 @@ function App() {
   // ── App state ───────────────────────────────────────────────────────────────
   const [view, setView]               = useState("landing");
   const [adminPw, setAdminPw]         = useState("");
+  const [apiKey, setApiKey]           = useState(() => localStorage.getItem("bs_api_key")||"");
   const [game, setGame]               = useState(null);
   const [players, setPlayers]         = useState([]);
   const [playerId, setPlayerId]       = useState(null);
@@ -361,8 +371,11 @@ function App() {
 
   // ── Admin login ───────────────────────────────────────────────────────────────
   const adminLogin = () => {
-    if (adminPw === ADMIN_PASSWORD) { setView("admin"); setError(""); }
-    else setError("Incorrect password.");
+    if (!apiKey.trim()) return setError("Please enter your Anthropic API key.");
+    if (adminPw === ADMIN_PASSWORD) {
+      localStorage.setItem("bs_api_key", apiKey.trim());
+      setView("admin"); setError("");
+    } else setError("Incorrect password.");
   };
 
   // ── Create game ───────────────────────────────────────────────────────────────
@@ -370,7 +383,7 @@ function App() {
     if (!gameName.trim()) return setError("Please enter a game name.");
     setLoading(true); setError("");
     try {
-      const questions = await fetchQuestions(category, difficulty);
+      const questions = await fetchQuestions(category, difficulty, apiKey);
       const code = genCode();
       const g = {
         code, name: gameName.trim(), category, difficulty,
@@ -383,7 +396,7 @@ function App() {
       startPolling(code, true);
       setView("admin-game");
       notify("🎉 Game ready! Share the code with players.");
-    } catch(e) { setError("Failed to generate questions. Please try again."); }
+    } catch(e) { setError("Failed to generate questions: " + (e.message||"Check your API key and try again.")); }
     setLoading(false);
   };
 
@@ -488,11 +501,22 @@ function App() {
           <div className="card card-sm">
             <button className="btn btn-ghost" style={{width:"auto",marginBottom:20}} onClick={()=>setView("landing")}>← Back</button>
             <h2>Admin <span className="accent">Access</span></h2>
-            <p className="muted" style={{margin:"6px 0 24px"}}>Default password: <code style={{color:"#6c63ff",background:"rgba(108,99,255,.12)",padding:"2px 8px",borderRadius:6}}>admin123</code></p>
+            <p className="muted" style={{margin:"6px 0 24px"}}>Enter your Anthropic API key and admin password</p>
             <div className="col">
-              <input className="input" type="password" placeholder="Admin password"
-                value={adminPw} onChange={e=>setAdminPw(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&adminLogin()}/>
+              <div>
+                <div className="section-lbl">Anthropic API Key</div>
+                <input className="input" type="password" placeholder="sk-ant-api03-..."
+                  value={apiKey} onChange={e=>setApiKey(e.target.value)}/>
+                <p style={{fontSize:".72rem",color:"rgba(255,255,255,.3)",marginTop:6,lineHeight:1.5}}>
+                  Get your key at <a href="https://console.anthropic.com/keys" target="_blank" style={{color:"#6c63ff"}}>console.anthropic.com/keys</a>. Saved locally in your browser.
+                </p>
+              </div>
+              <div>
+                <div className="section-lbl">Admin Password</div>
+                <input className="input" type="password" placeholder="Default: admin123"
+                  value={adminPw} onChange={e=>setAdminPw(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&adminLogin()}/>
+              </div>
               {error&&<p style={{color:"#ff4757",fontSize:".85rem"}}>{error}</p>}
               <button className="btn btn-primary" onClick={adminLogin}>Unlock →</button>
             </div>
