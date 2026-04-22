@@ -217,9 +217,7 @@ const POLL_MS = 2500;
 const TIMER_MS = 20000;
 const RANK_EMOJI = ["🥇","🥈","🥉"];
 
-const SYSTEM_PROMPT = `You are a quiz master. Generate exactly 5 trivia questions as a JSON array.
-Each object: {"question":string,"options":[4 strings],"answer":number 0-3,"explanation":string}
-Return ONLY valid JSON array. No markdown, no extra text.`;
+
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const genCode = () => Math.random().toString(36).slice(2,7).toUpperCase();
@@ -251,31 +249,205 @@ async function loadPlayers(code) {
   } catch(_) { return []; }
 }
 
-// ── API call ──────────────────────────────────────────────────────────────────
-async function fetchQuestions(category, difficulty, apiKey) {
-  const cat = CATEGORIES.find(c => c.id === category);
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    },
-    body: JSON.stringify({
-      model:"claude-sonnet-4-20250514",
-      max_tokens:1000,
-      system:SYSTEM_PROMPT,
-      messages:[{role:"user", content:`Generate 5 ${difficulty} trivia questions about ${cat.label}. Make them engaging.`}]
-    })
-  });
-  if (!resp.ok) {
-    const err = await resp.json().catch(()=>({}));
-    throw new Error(err?.error?.message || `API error ${resp.status}`);
-  }
-  const data = await resp.json();
-  const text = data.content?.find(b=>b.type==="text")?.text || "[]";
-  return JSON.parse(text.trim());
+// ── Local Question Bank (no API needed) ──────────────────────────────────────
+const QUESTION_BANK = {
+  science: {
+    easy: [
+      {question:"What planet is known as the Red Planet?",options:["Venus","Mars","Jupiter","Saturn"],answer:1,explanation:"Mars appears red due to iron oxide (rust) on its surface."},
+      {question:"What gas do plants absorb from the atmosphere?",options:["Oxygen","Nitrogen","Carbon Dioxide","Hydrogen"],answer:2,explanation:"Plants absorb CO₂ during photosynthesis and release oxygen."},
+      {question:"How many bones are in the adult human body?",options:["196","206","216","226"],answer:1,explanation:"Adults have 206 bones; babies are born with around 270 that fuse over time."},
+      {question:"What is the chemical symbol for water?",options:["WA","HO","H2O","W2O"],answer:2,explanation:"Water is two hydrogen atoms bonded to one oxygen atom — H₂O."},
+      {question:"Which organ pumps blood around the body?",options:["Liver","Lungs","Brain","Heart"],answer:3,explanation:"The heart is a muscular organ that pumps blood through the circulatory system."},
+      {question:"What is the closest star to Earth?",options:["Sirius","Alpha Centauri","Betelgeuse","The Sun"],answer:3,explanation:"The Sun is our nearest star, about 93 million miles away."},
+      {question:"What force keeps planets in orbit around the Sun?",options:["Magnetism","Gravity","Friction","Electricity"],answer:1,explanation:"Gravity is the attractive force between masses that keeps planets in orbit."},
+      {question:"What is the hardest natural substance on Earth?",options:["Gold","Iron","Diamond","Quartz"],answer:2,explanation:"Diamond scores 10 on the Mohs hardness scale — the highest possible."},
+      {question:"How many legs does a spider have?",options:["6","8","10","12"],answer:1,explanation:"Spiders are arachnids and have 8 legs, unlike insects which have 6."},
+      {question:"What is the boiling point of water at sea level?",options:["90°C","95°C","100°C","105°C"],answer:2,explanation:"Water boils at 100°C (212°F) at standard atmospheric pressure."},
+    ],
+    medium: [
+      {question:"What is the powerhouse of the cell?",options:["Nucleus","Ribosome","Mitochondria","Vacuole"],answer:2,explanation:"Mitochondria produce ATP through cellular respiration, providing energy for the cell."},
+      {question:"What is the speed of light in a vacuum?",options:["200,000 km/s","300,000 km/s","400,000 km/s","500,000 km/s"],answer:1,explanation:"Light travels at approximately 299,792 km/s in a vacuum."},
+      {question:"Which element has the atomic number 1?",options:["Helium","Lithium","Hydrogen","Carbon"],answer:2,explanation:"Hydrogen is the simplest and most abundant element in the universe."},
+      {question:"What is the process by which plants make food using sunlight?",options:["Respiration","Photosynthesis","Transpiration","Fermentation"],answer:1,explanation:"Photosynthesis converts light energy, CO₂, and water into glucose and oxygen."},
+      {question:"What type of rock is formed from cooled magma?",options:["Sedimentary","Metamorphic","Igneous","Limestone"],answer:2,explanation:"Igneous rocks form when magma or lava cools and solidifies."},
+      {question:"What is the most abundant gas in Earth's atmosphere?",options:["Oxygen","Carbon Dioxide","Argon","Nitrogen"],answer:3,explanation:"Nitrogen makes up about 78% of Earth's atmosphere."},
+      {question:"Which planet has the most moons?",options:["Jupiter","Saturn","Uranus","Neptune"],answer:1,explanation:"Saturn has over 140 confirmed moons, the most of any planet in our solar system."},
+      {question:"What is the chemical formula for table salt?",options:["KCl","NaCl","CaCl2","MgCl2"],answer:1,explanation:"Table salt is sodium chloride — one sodium atom bonded to one chlorine atom."},
+      {question:"What is absolute zero in Celsius?",options:["-173°C","-223°C","-273°C","-323°C"],answer:2,explanation:"Absolute zero is −273.15°C, the lowest possible temperature where all motion stops."},
+      {question:"DNA stands for what?",options:["Deoxyribonucleic Acid","Dioxynucleic Acid","Diribonucleic Acid","Deoxyribonitric Acid"],answer:0,explanation:"DNA (Deoxyribonucleic Acid) carries genetic information in living organisms."},
+    ],
+    hard: [
+      {question:"What is the Heisenberg Uncertainty Principle?",options:["Energy cannot be created or destroyed","You cannot know both position and momentum precisely simultaneously","Light speed is constant for all observers","Electrons orbit the nucleus in fixed shells"],answer:1,explanation:"It states that the more precisely you know a particle's position, the less precisely you can know its momentum, and vice versa."},
+      {question:"Which subatomic particle has no electric charge?",options:["Proton","Electron","Neutron","Positron"],answer:2,explanation:"Neutrons are found in the nucleus alongside protons but carry no electric charge."},
+      {question:"What is the Krebs cycle also known as?",options:["Calvin cycle","Nitrogen cycle","Citric acid cycle","Urea cycle"],answer:2,explanation:"The Krebs cycle (citric acid cycle) is a series of reactions used to generate energy in cells."},
+      {question:"What phenomenon causes the bending of light around massive objects?",options:["Refraction","Diffraction","Gravitational lensing","Chromatic aberration"],answer:2,explanation:"Gravitational lensing occurs because massive objects curve spacetime, bending light paths."},
+      {question:"What is the half-life of Carbon-14?",options:["1,730 years","5,730 years","57,300 years","573 years"],answer:1,explanation:"Carbon-14 has a half-life of about 5,730 years, making it useful for dating organic material up to ~50,000 years old."},
+      {question:"Which law states that pressure and volume of a gas are inversely proportional?",options:["Charles's Law","Gay-Lussac's Law","Boyle's Law","Avogadro's Law"],answer:2,explanation:"Boyle's Law: at constant temperature, P×V = constant for an ideal gas."},
+      {question:"What is the name of the process where a solid transitions directly to gas?",options:["Evaporation","Condensation","Sublimation","Deposition"],answer:2,explanation:"Sublimation is the direct phase transition from solid to gas without passing through liquid."},
+      {question:"What does RNA stand for?",options:["Ribonucleic Acid","Ribonuclear Atom","Ribonitric Acid","Ribose Nucleic Agent"],answer:0,explanation:"RNA (Ribonucleic Acid) plays a key role in translating genetic information into proteins."},
+      {question:"What is the name of the force that holds quarks together inside protons?",options:["Electromagnetic force","Gravitational force","Strong nuclear force","Weak nuclear force"],answer:2,explanation:"The strong nuclear force, carried by gluons, binds quarks together inside protons and neutrons."},
+      {question:"Which planet has a Great Dark Spot similar to Jupiter's Great Red Spot?",options:["Saturn","Uranus","Neptune","Mars"],answer:2,explanation:"Neptune's Great Dark Spot was observed by Voyager 2 in 1989 — a massive storm system."},
+    ],
+  },
+  history: {
+    easy: [
+      {question:"Who was the first President of the United States?",options:["Abraham Lincoln","Thomas Jefferson","George Washington","John Adams"],answer:2,explanation:"George Washington served as the 1st President from 1789 to 1797."},
+      {question:"In which year did World War II end?",options:["1943","1944","1945","1946"],answer:2,explanation:"World War II ended in 1945 — V-E Day (Europe) in May and V-J Day (Japan) in September."},
+      {question:"Which ancient wonder was located in Egypt?",options:["Hanging Gardens","Colossus of Rhodes","Great Pyramid of Giza","Temple of Artemis"],answer:2,explanation:"The Great Pyramid of Giza is the only ancient wonder still largely intact today."},
+      {question:"Who painted the Mona Lisa?",options:["Michelangelo","Leonardo da Vinci","Raphael","Caravaggio"],answer:1,explanation:"Leonardo da Vinci painted the Mona Lisa between 1503 and 1519."},
+      {question:"What year did the Berlin Wall fall?",options:["1987","1988","1989","1990"],answer:2,explanation:"The Berlin Wall fell on November 9, 1989, marking the end of the Cold War era in Europe."},
+      {question:"Which empire was ruled by Julius Caesar?",options:["Greek Empire","Ottoman Empire","Roman Empire","Persian Empire"],answer:2,explanation:"Julius Caesar was a Roman general and statesman who played a key role in the Roman Republic's transition to empire."},
+      {question:"Who was the first person to walk on the Moon?",options:["Buzz Aldrin","Yuri Gagarin","Neil Armstrong","John Glenn"],answer:2,explanation:"Neil Armstrong became the first human to walk on the Moon on July 20, 1969."},
+      {question:"Which country was the first to give women the right to vote?",options:["USA","UK","New Zealand","France"],answer:2,explanation:"New Zealand became the first self-governing country to grant women the right to vote in 1893."},
+      {question:"What was the name of the ship that sank in 1912?",options:["Lusitania","Britannic","Titanic","Olympic"],answer:2,explanation:"RMS Titanic sank on April 15, 1912, after hitting an iceberg on its maiden voyage."},
+      {question:"Who invented the telephone?",options:["Thomas Edison","Nikola Tesla","Alexander Graham Bell","Guglielmo Marconi"],answer:2,explanation:"Alexander Graham Bell is credited with inventing and patenting the first practical telephone in 1876."},
+    ],
+    medium: [
+      {question:"Which war was fought between the North and South in the United States?",options:["Revolutionary War","War of 1812","Civil War","Spanish-American War"],answer:2,explanation:"The American Civil War (1861–1865) was fought between the Union (North) and Confederacy (South)."},
+      {question:"Who was the Egyptian queen who allied with Julius Caesar and Mark Antony?",options:["Nefertiti","Hatshepsut","Cleopatra","Isis"],answer:2,explanation:"Cleopatra VII was the last active ruler of the Ptolemaic Kingdom of Egypt."},
+      {question:"In what year did the French Revolution begin?",options:["1776","1783","1789","1799"],answer:2,explanation:"The French Revolution began in 1789 with the storming of the Bastille on July 14."},
+      {question:"Which empire was the largest in history by land area?",options:["Roman Empire","British Empire","Mongol Empire","Ottoman Empire"],answer:2,explanation:"The Mongol Empire at its peak covered over 24 million km², the largest contiguous land empire."},
+      {question:"Who wrote 'The Art of War'?",options:["Confucius","Laozi","Sun Tzu","Mencius"],answer:2,explanation:"Sun Tzu, a Chinese military strategist, wrote 'The Art of War' around the 5th century BC."},
+      {question:"What year did India gain independence from Britain?",options:["1945","1946","1947","1948"],answer:2,explanation:"India gained independence on August 15, 1947, after the British Parliament passed the Indian Independence Act."},
+      {question:"Who was the first female Prime Minister of the United Kingdom?",options:["Queen Elizabeth II","Barbara Castle","Margaret Thatcher","Theresa May"],answer:2,explanation:"Margaret Thatcher served as PM from 1979 to 1990, the first and longest-serving female PM."},
+      {question:"What ancient document signed in 1215 limited the power of English kings?",options:["Bill of Rights","Domesday Book","Magna Carta","Act of Union"],answer:2,explanation:"The Magna Carta was signed by King John in 1215, establishing that the king was subject to the rule of law."},
+      {question:"Which country did Napoleon Bonaparte come from originally?",options:["France","Italy","Corsica","Spain"],answer:2,explanation:"Napoleon was born in Corsica in 1769, shortly after it was transferred from Genoa to France."},
+      {question:"The Silk Road connected China to which region?",options:["Africa","South America","Mediterranean/Europe","Australia"],answer:2,explanation:"The Silk Road was an ancient trade route network connecting East Asia to the Mediterranean world."},
+    ],
+    hard: [
+      {question:"What was the name of the Byzantine Empire's capital city?",options:["Athens","Alexandria","Constantinople","Antioch"],answer:2,explanation:"Constantinople (modern Istanbul) served as the capital of the Byzantine Empire until its fall in 1453."},
+      {question:"The Congress of Vienna (1814–15) was primarily organized to do what?",options:["End WWI","Divide Africa among European powers","Reorganize Europe after Napoleon","Establish the League of Nations"],answer:2,explanation:"The Congress of Vienna reorganized Europe after Napoleon's defeat, restoring borders and balance of power."},
+      {question:"Which ancient civilization built Machu Picchu?",options:["Aztec","Maya","Inca","Olmec"],answer:2,explanation:"Machu Picchu was built by the Inca civilization in the 15th century in present-day Peru."},
+      {question:"Who was the leader of the Bolshevik Revolution in Russia in 1917?",options:["Stalin","Trotsky","Lenin","Kerensky"],answer:2,explanation:"Vladimir Lenin led the Bolshevik party in the October Revolution of 1917, establishing Soviet rule."},
+      {question:"What event triggered the start of World War I?",options:["Invasion of Poland","Sinking of the Lusitania","Assassination of Archduke Franz Ferdinand","The Zimmermann Telegram"],answer:2,explanation:"The assassination of Austro-Hungarian heir Archduke Franz Ferdinand in Sarajevo on June 28, 1914 triggered WWI."},
+      {question:"What year was the United Nations founded?",options:["1944","1945","1946","1947"],answer:1,explanation:"The United Nations was founded on October 24, 1945, after WWII, to promote international cooperation."},
+      {question:"Which philosopher wrote 'The Republic'?",options:["Aristotle","Socrates","Plato","Epicurus"],answer:2,explanation:"Plato wrote 'The Republic' around 375 BC, exploring justice, the ideal state, and the philosopher-king."},
+      {question:"The Peloponnesian War was fought between which two city-states?",options:["Rome and Carthage","Athens and Sparta","Corinth and Thebes","Argos and Macedonia"],answer:1,explanation:"The Peloponnesian War (431–404 BC) was fought between Athens and the Peloponnesian League led by Sparta."},
+      {question:"What was the name of the first artificial satellite launched into space?",options:["Explorer 1","Vostok 1","Sputnik 1","Luna 1"],answer:2,explanation:"Sputnik 1, launched by the Soviet Union on October 4, 1957, was the first artificial Earth satellite."},
+      {question:"The Meiji Restoration of 1868 occurred in which country?",options:["China","Korea","Japan","Vietnam"],answer:2,explanation:"The Meiji Restoration returned political power to Emperor Meiji in Japan, triggering rapid modernization."},
+    ],
+  },
+  geography: {
+    easy: [
+      {question:"What is the largest ocean on Earth?",options:["Atlantic","Indian","Arctic","Pacific"],answer:3,explanation:"The Pacific Ocean is the largest, covering about 165 million km² — more than all landmasses combined."},
+      {question:"What is the capital of France?",options:["Lyon","Marseille","Paris","Nice"],answer:2,explanation:"Paris has been the capital of France since the 10th century and is its largest city."},
+      {question:"Which is the longest river in the world?",options:["Amazon","Yangtze","Mississippi","Nile"],answer:3,explanation:"The Nile is traditionally considered the world's longest river at approximately 6,650 km."},
+      {question:"Which continent is the Sahara Desert located on?",options:["Asia","Australia","South America","Africa"],answer:3,explanation:"The Sahara is the world's largest hot desert, spanning much of North Africa."},
+      {question:"What is the smallest country in the world?",options:["Monaco","San Marino","Liechtenstein","Vatican City"],answer:3,explanation:"Vatican City covers just 0.44 km² and is an independent city-state within Rome."},
+      {question:"Which mountain is the tallest in the world?",options:["K2","Kangchenjunga","Lhotse","Mount Everest"],answer:3,explanation:"Mount Everest stands at 8,849 m above sea level, the highest point on Earth."},
+      {question:"What is the capital of Japan?",options:["Osaka","Kyoto","Hiroshima","Tokyo"],answer:3,explanation:"Tokyo has been Japan's capital since 1869 and is one of the world's largest metropolitan areas."},
+      {question:"Which country has the most natural lakes?",options:["USA","Russia","Brazil","Canada"],answer:3,explanation:"Canada has over 60% of the world's lakes — approximately 879,800 lakes."},
+      {question:"On which continent is the Amazon rainforest located?",options:["Africa","Asia","North America","South America"],answer:3,explanation:"The Amazon rainforest spans 9 countries in South America, with most in Brazil."},
+      {question:"What is the capital of Australia?",options:["Sydney","Melbourne","Brisbane","Canberra"],answer:3,explanation:"Canberra has been Australia's capital since 1913, chosen as a compromise between Sydney and Melbourne."},
+    ],
+    medium: [
+      {question:"Which country has the longest coastline in the world?",options:["Russia","Australia","Norway","Canada"],answer:3,explanation:"Canada has the world's longest coastline at approximately 202,080 km."},
+      {question:"What is the capital of Brazil?",options:["São Paulo","Rio de Janeiro","Salvador","Brasília"],answer:3,explanation:"Brasília has been Brazil's capital since 1960, replacing Rio de Janeiro."},
+      {question:"Which strait separates Europe from Africa?",options:["Strait of Dover","Strait of Messina","Strait of Hormuz","Strait of Gibraltar"],answer:3,explanation:"The Strait of Gibraltar separates Spain from Morocco and connects the Atlantic Ocean to the Mediterranean Sea."},
+      {question:"Which African country has the most pyramids?",options:["Egypt","Libya","Sudan","Ethiopia"],answer:2,explanation:"Sudan (ancient Nubia) has more pyramids than Egypt — over 200 — built by the Kushite kingdoms."},
+      {question:"What is the world's largest desert?",options:["Sahara","Gobi","Arabian","Antarctic"],answer:3,explanation:"Antarctica is the world's largest desert at 14.2 million km², as a desert is defined by low precipitation."},
+      {question:"What is the capital of Canada?",options:["Toronto","Vancouver","Montreal","Ottawa"],answer:3,explanation:"Ottawa has been Canada's capital since 1857, chosen by Queen Victoria."},
+      {question:"Which sea is the saltiest in the world?",options:["Red Sea","Caspian Sea","Mediterranean Sea","Dead Sea"],answer:3,explanation:"The Dead Sea has a salinity of about 34%, nearly 10x saltier than the ocean."},
+      {question:"Which country is both in Europe and Asia?",options:["Kazakhstan","Georgia","Azerbaijan","Turkey"],answer:3,explanation:"Turkey straddles two continents — the bulk in Asia (Anatolia) with a small part in Europe (Thrace)."},
+      {question:"What is the largest country in the world by land area?",options:["Canada","China","USA","Russia"],answer:3,explanation:"Russia covers 17.1 million km², making it by far the largest country on Earth."},
+      {question:"Where is the deepest lake in the world located?",options:["USA","Mongolia","Tanzania","Russia"],answer:3,explanation:"Lake Baikal in Russia is the world's deepest lake at 1,642 m, holding 20% of Earth's fresh surface water."},
+    ],
+    hard: [
+      {question:"What is the name of the tectonic plate that covers most of the Pacific Ocean?",options:["Eurasian Plate","North American Plate","Pacific Plate","Indo-Australian Plate"],answer:2,explanation:"The Pacific Plate is the world's largest oceanic tectonic plate, covering much of the Pacific Ocean."},
+      {question:"Which country has the most time zones?",options:["Russia","USA","China","France"],answer:3,explanation:"France has 12 time zones due to its overseas territories spread across the globe."},
+      {question:"What is the name of the world's highest navigable lake?",options:["Lake Maracaibo","Lake Chad","Lake Titicaca","Lake Victoria"],answer:2,explanation:"Lake Titicaca sits at 3,812 m above sea level on the border of Peru and Bolivia."},
+      {question:"Which country has the longest land border?",options:["China","USA","Brazil","Russia"],answer:3,explanation:"China has the longest land border, sharing frontiers with 14 different countries totalling over 22,000 km."},
+      {question:"What is the name of the narrow land bridge connecting North and South America?",options:["Yucatán Peninsula","Baja California","Isthmus of Panama","Isthmus of Tehuantepec"],answer:2,explanation:"The Isthmus of Panama is the narrow strip of land connecting North and South America."},
+      {question:"Which ocean trench is the deepest point on Earth?",options:["Java Trench","Puerto Rico Trench","Tonga Trench","Mariana Trench"],answer:3,explanation:"The Challenger Deep in the Mariana Trench reaches 10,935 m below sea level."},
+      {question:"What is the name of the largest hot spring in the United States?",options:["Old Faithful","Grand Prismatic Spring","Mammoth Hot Springs","Norris Geyser"],answer:1,explanation:"Grand Prismatic Spring in Yellowstone is the largest hot spring in the US at 112 m wide."},
+      {question:"The Atacama Desert is located primarily in which country?",options:["Peru","Bolivia","Argentina","Chile"],answer:3,explanation:"The Atacama Desert runs along the Pacific coast of Chile and is the world's driest non-polar desert."},
+      {question:"What is the name of the imaginary line at 0° longitude?",options:["Equator","Tropic of Cancer","International Date Line","Prime Meridian"],answer:3,explanation:"The Prime Meridian passes through Greenwich, London, and is the reference point for longitude."},
+      {question:"Which is the only sea with no coastline?",options:["Coral Sea","Sargasso Sea","Tasman Sea","Labrador Sea"],answer:1,explanation:"The Sargasso Sea is bounded entirely by ocean currents rather than landmasses."},
+    ],
+  },
+  pop_culture: {
+    easy: [
+      {question:"Which band sang 'Bohemian Rhapsody'?",options:["The Beatles","Led Zeppelin","Queen","The Rolling Stones"],answer:2,explanation:"'Bohemian Rhapsody' was released by Queen in 1975 and remains one of the greatest rock songs ever."},
+      {question:"What is the highest-grossing film franchise of all time?",options:["Star Wars","Harry Potter","James Bond","Marvel Cinematic Universe"],answer:3,explanation:"The MCU has grossed over $30 billion worldwide, making it the highest-grossing film franchise."},
+      {question:"Which social media platform uses a bird as its logo?",options:["Facebook","Instagram","Twitter/X","Snapchat"],answer:2,explanation:"Twitter used a bird logo since its founding; it was rebranded to X in 2023 but the bird remains iconic."},
+      {question:"Who played Iron Man in the Marvel Cinematic Universe?",options:["Chris Evans","Chris Hemsworth","Robert Downey Jr.","Mark Ruffalo"],answer:2,explanation:"Robert Downey Jr. portrayed Tony Stark / Iron Man from 2008's Iron Man through Avengers: Endgame."},
+      {question:"Which TV show features the fictional town of Hawkins, Indiana?",options:["Dark","The OA","Stranger Things","Twin Peaks"],answer:2,explanation:"Stranger Things is set in Hawkins, Indiana, where supernatural events unfold in the 1980s."},
+      {question:"Who wrote the Harry Potter series?",options:["Stephenie Meyer","Suzanne Collins","J.R.R. Tolkien","J.K. Rowling"],answer:3,explanation:"J.K. Rowling wrote all seven Harry Potter novels, published between 1997 and 2007."},
+      {question:"Which streaming platform released 'Squid Game'?",options:["HBO","Disney+","Amazon Prime","Netflix"],answer:3,explanation:"Squid Game was released on Netflix in September 2021 and became the platform's most-watched series."},
+      {question:"What is the best-selling video game of all time?",options:["Tetris","GTA V","Minecraft","Mario Kart Wii"],answer:2,explanation:"Minecraft has sold over 300 million copies across all platforms, making it the best-selling game ever."},
+      {question:"Which artist released the album 'Thriller'?",options:["Prince","Michael Jackson","Whitney Houston","Madonna"],answer:1,explanation:"Michael Jackson released Thriller in 1982; it remains the best-selling album of all time."},
+      {question:"In which country did the K-pop genre originate?",options:["Japan","China","Thailand","South Korea"],answer:3,explanation:"K-pop (Korean pop) originated in South Korea and has become a global phenomenon."},
+    ],
+    medium: [
+      {question:"Who directed the movie 'Inception'?",options:["Steven Spielberg","James Cameron","Christopher Nolan","Ridley Scott"],answer:2,explanation:"Christopher Nolan wrote and directed Inception (2010), a sci-fi thriller about dream infiltration."},
+      {question:"Which video game console was released by Sony in 1994?",options:["Nintendo 64","Sega Saturn","PlayStation","Dreamcast"],answer:2,explanation:"Sony released the original PlayStation in Japan in December 1994, revolutionising home gaming."},
+      {question:"What does 'MCU' stand for in entertainment?",options:["Major Cinema Universe","Marvel Cinematic Universe","Mega Comic Universe","Marvel Comics United"],answer:1,explanation:"MCU stands for Marvel Cinematic Universe — the interconnected series of superhero films and shows."},
+      {question:"Which TV series is based on George R.R. Martin's 'A Song of Ice and Fire'?",options:["The Witcher","The Last Kingdom","House of the Dragon","Game of Thrones"],answer:3,explanation:"Game of Thrones (2011–2019) was HBO's adaptation of Martin's fantasy novels."},
+      {question:"Who created the 'Simpsons'?",options:["Seth MacFarlane","Mike Judge","Matt Groening","Seth Green"],answer:2,explanation:"Matt Groening created The Simpsons, which premiered in 1989 and is the longest-running animated TV series."},
+      {question:"Which artist is known as the 'Queen of Pop'?",options:["Beyoncé","Lady Gaga","Rihanna","Madonna"],answer:3,explanation:"Madonna earned the title 'Queen of Pop' for her decades of influence on popular music since the 1980s."},
+      {question:"What year was the first iPhone released?",options:["2005","2006","2007","2008"],answer:2,explanation:"Apple released the first iPhone on June 29, 2007, revolutionising the smartphone industry."},
+      {question:"Which film won the first-ever Academy Award for Best Picture?",options:["Wings","Sunrise","The Broadway Melody","All Quiet on the Western Front"],answer:0,explanation:"Wings won Best Picture at the 1st Academy Awards in 1929 (though the award was called 'Outstanding Picture')."},
+      {question:"What is the name of Batman's butler?",options:["Edwin","James","Alfred","William"],answer:2,explanation:"Alfred Pennyworth is Bruce Wayne's loyal butler and confidant in the Batman universe."},
+      {question:"Which band performed at the most-watched Super Bowl halftime show?",options:["Beyoncé","Katy Perry","Shakira & JLo","Bruno Mars"],answer:1,explanation:"Katy Perry's 2015 Super Bowl halftime show drew over 118.5 million viewers — the most ever at that time."},
+    ],
+    hard: [
+      {question:"What was the first feature-length animated film ever released?",options:["Pinocchio","Fantasia","Bambi","Snow White and the Seven Dwarfs"],answer:3,explanation:"Disney's Snow White and the Seven Dwarfs (1937) was the world's first full-length animated feature film."},
+      {question:"Which novel is considered the first science fiction story?",options:["20,000 Leagues Under the Sea","The Time Machine","Frankenstein","The War of the Worlds"],answer:2,explanation:"Mary Shelley's Frankenstein (1818) is widely considered the first true science fiction novel."},
+      {question:"Who composed the music for the original Star Wars trilogy?",options:["Hans Zimmer","Ennio Morricone","John Williams","Bernard Herrmann"],answer:2,explanation:"John Williams composed the iconic Star Wars score, winning an Academy Award for the original film in 1977."},
+      {question:"What was the first video game to feature a high score table?",options:["Pong","Space Invaders","Asteroids","Pac-Man"],answer:1,explanation:"Space Invaders (1978) introduced the concept of a high score table, encouraging replay."},
+      {question:"Which Hitchcock film features the famous shower scene?",options:["Vertigo","Rear Window","The Birds","Psycho"],answer:3,explanation:"Psycho (1960) features the iconic shower scene, one of the most famous sequences in cinema history."},
+      {question:"What is the highest-rated TV episode on IMDb of all time?",options:["The Rains of Castamere (GoT)","Ozymandias (Breaking Bad)","Battle of the Bastards (GoT)","Felina (Breaking Bad)"],answer:1,explanation:"'Ozymandias' (Breaking Bad S05E14) holds the highest IMDb rating for a single TV episode."},
+      {question:"Who was the first rapper to win a Pulitzer Prize?",options:["Jay-Z","Nas","Kendrick Lamar","J. Cole"],answer:2,explanation:"Kendrick Lamar won the 2018 Pulitzer Prize for Music for his album DAMN., the first non-classical or jazz work to win."},
+      {question:"What is the name of the fictional drug in 'Breaking Bad'?",options:["Crystal Dream","Blue Sky","Ice Storm","Heisenberg Blue"],answer:1,explanation:"Walter White's signature product in Breaking Bad was known as 'Blue Sky' for its distinctive blue colour."},
+      {question:"Which director has won the most Academy Awards for Best Director?",options:["Steven Spielberg","Billy Wilder","John Ford","William Wyler"],answer:2,explanation:"John Ford won four Academy Awards for Best Director — for The Informer, The Grapes of Wrath, How Green Was My Valley, and The Quiet Man."},
+      {question:"What is the longest-running Broadway show of all time?",options:["Cats","Chicago","The Phantom of the Opera","A Chorus Line"],answer:2,explanation:"The Phantom of the Opera ran on Broadway from 1988 to 2023 — 35 years and 13,981 performances."},
+    ],
+  },
+  sports: {
+    easy: [
+      {question:"How many players are on a standard football (soccer) team?",options:["9","10","11","12"],answer:2,explanation:"A standard football team has 11 players on the pitch, including the goalkeeper."},
+      {question:"How many rings are on the Olympic flag?",options:["4","5","6","7"],answer:1,explanation:"The Olympic flag has 5 interlocking rings representing the five continents of the world."},
+      {question:"Which country invented basketball?",options:["USA","Canada","UK","Brazil"],answer:0,explanation:"Basketball was invented by Canadian-American James Naismith in 1891 in Springfield, Massachusetts, USA."},
+      {question:"In tennis, what is the term for scoring no points?",options:["Nil","Zero","Love","Naught"],answer:2,explanation:"In tennis, 'love' means zero — derived from the French 'l'oeuf' (the egg), representing a zero score."},
+      {question:"How many players are on a basketball team on the court?",options:["4","5","6","7"],answer:1,explanation:"Each basketball team has 5 players on the court at a time."},
+      {question:"What sport is played at Wimbledon?",options:["Cricket","Badminton","Squash","Tennis"],answer:3,explanation:"Wimbledon is the oldest and most prestigious tennis tournament, held annually in London."},
+      {question:"How many holes are played in a standard round of golf?",options:["9","12","18","21"],answer:2,explanation:"A standard round of golf consists of 18 holes."},
+      {question:"Which country has won the most FIFA World Cups?",options:["Germany","Argentina","Italy","Brazil"],answer:3,explanation:"Brazil has won the FIFA World Cup a record 5 times (1958, 1962, 1970, 1994, 2002)."},
+      {question:"What colour belt is the highest in judo?",options:["Brown","Red","Black","White"],answer:1,explanation:"In judo, the red belt (kōhaku) represents the highest dan grades (9th and 10th dan)."},
+      {question:"How many points is a try worth in rugby union?",options:["3","4","5","6"],answer:2,explanation:"A try in rugby union is worth 5 points — placing the ball down in the opponent's in-goal area."},
+    ],
+    medium: [
+      {question:"Who holds the record for the most Grand Slam tennis titles (men's)?",options:["Roger Federer","Rafael Nadal","Pete Sampras","Novak Djokovic"],answer:3,explanation:"Novak Djokovic has won 24 Grand Slam singles titles, the most in men's tennis history."},
+      {question:"In which year were the first modern Olympic Games held?",options:["1892","1896","1900","1904"],answer:1,explanation:"The first modern Olympics were held in Athens, Greece in 1896."},
+      {question:"What is the maximum score in a game of ten-pin bowling?",options:["200","250","300","350"],answer:2,explanation:"A perfect game of bowling scores 300 — twelve consecutive strikes."},
+      {question:"Which Formula 1 driver has won the most World Championships?",options:["Ayrton Senna","Michael Schumacher","Sebastian Vettel","Lewis Hamilton"],answer:3,explanation:"Lewis Hamilton won 7 World Championships (tied with Schumacher), the most in F1 history."},
+      {question:"How long is a marathon race?",options:["40 km","41.195 km","42.195 km","43 km"],answer:2,explanation:"A marathon is 42.195 km (26 miles 385 yards), standardised at the 1908 London Olympics."},
+      {question:"Which country has won the most Rugby World Cup titles?",options:["England","Australia","New Zealand","South Africa"],answer:2,explanation:"New Zealand (the All Blacks) have won 3 Rugby World Cups (1987, 2011, 2015)."},
+      {question:"In cricket, what is a score of zero called?",options:["Nil","Blank","Duck","Goose"],answer:2,explanation:"In cricket, a batter who is dismissed without scoring is said to be out for a duck."},
+      {question:"Which NBA team has won the most championships?",options:["Los Angeles Lakers","Chicago Bulls","Golden State Warriors","Boston Celtics"],answer:3,explanation:"The Boston Celtics have won the most NBA championships with 17 titles."},
+      {question:"How many events are in a decathlon?",options:["8","9","10","12"],answer:2,explanation:"A decathlon consists of 10 events: 100m, long jump, shot put, high jump, 400m, 110m hurdles, discus, pole vault, javelin, and 1500m."},
+      {question:"What is the diameter of a basketball hoop in inches?",options:["16 inches","18 inches","20 inches","22 inches"],answer:1,explanation:"A basketball hoop has an internal diameter of 18 inches (45.7 cm)."},
+    ],
+    hard: [
+      {question:"Who was the first gymnast to score a perfect 10 in the Olympics?",options:["Mary Lou Retton","Olga Korbut","Simone Biles","Nadia Comaneci"],answer:3,explanation:"Nadia Comaneci of Romania scored the first Olympic perfect 10 in gymnastics at the 1976 Montreal Games."},
+      {question:"What is the only country to have competed at every modern Summer Olympic Games?",options:["USA","UK","France","Greece"],answer:1,explanation:"Great Britain (UK) is the only country to have competed at every Summer Olympics since 1896."},
+      {question:"In fencing, what is the name of the weapon that scores touches on the entire body?",options:["Foil","Sabre","Épée","Rapier"],answer:2,explanation:"In épée fencing, the entire body is a valid target — unlike foil (torso only) or sabre (upper body only)."},
+      {question:"Which boxer was nicknamed 'The Real Deal'?",options:["Lennox Lewis","Evander Holyfield","Riddick Bowe","George Foreman"],answer:1,explanation:"Evander Holyfield earned the nickname 'The Real Deal' — he was a four-time world heavyweight champion."},
+      {question:"How many dimples are on a regulation golf ball?",options:["256","336","500","336–500 (varies)"],answer:3,explanation:"Golf balls typically have between 300 and 500 dimples — 336 is common but not universal."},
+      {question:"What is the term for three consecutive strikes in bowling?",options:["Triple","Hat-trick","Turkey","Three-peat"],answer:2,explanation:"Three consecutive strikes in bowling is called a 'turkey', a term dating back to the 19th century."},
+      {question:"In which year did the 'Miracle on Ice' ice hockey match take place?",options:["1976","1978","1980","1984"],answer:2,explanation:"The 'Miracle on Ice' occurred at the 1980 Lake Placid Olympics, when the USA upset the Soviet Union 4-3."},
+      {question:"What is the shortest possible checkmate in chess?",options:["Fool's Mate (2 moves)","Scholar's Mate (4 moves)","3-move mate","5-move mate"],answer:0,explanation:"The Fool's Mate is checkmate in just 2 moves — the fastest possible checkmate in chess."},
+      {question:"Which country invented the sport of polo?",options:["England","Argentina","Persia (Iran)","India"],answer:2,explanation:"Polo originated in ancient Persia (modern Iran) around 2,500 years ago as training for cavalry units."},
+      {question:"Who holds the world record for the 100m sprint?",options:["Asafa Powell","Tyson Gay","Justin Gatlin","Usain Bolt"],answer:3,explanation:"Usain Bolt set the world record of 9.58 seconds at the 2009 World Championships in Berlin."},
+    ],
+  },
+};
+
+// ── Pick 5 random questions from bank ────────────────────────────────────────
+function fetchQuestions(category, difficulty) {
+  const pool = QUESTION_BANK[category]?.[difficulty] || QUESTION_BANK.science.medium;
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  return Promise.resolve(shuffled.slice(0, 5));
 }
 
 // ── Timer Bar ─────────────────────────────────────────────────────────────────
@@ -315,7 +487,6 @@ function App() {
   // ── App state ───────────────────────────────────────────────────────────────
   const [view, setView]               = useState("landing");
   const [adminPw, setAdminPw]         = useState("");
-  const [apiKey, setApiKey]           = useState(() => localStorage.getItem("bs_api_key")||"");
   const [game, setGame]               = useState(null);
   const [players, setPlayers]         = useState([]);
   const [playerId, setPlayerId]       = useState(null);
@@ -371,11 +542,8 @@ function App() {
 
   // ── Admin login ───────────────────────────────────────────────────────────────
   const adminLogin = () => {
-    if (!apiKey.trim()) return setError("Please enter your Anthropic API key.");
-    if (adminPw === ADMIN_PASSWORD) {
-      localStorage.setItem("bs_api_key", apiKey.trim());
-      setView("admin"); setError("");
-    } else setError("Incorrect password.");
+    if (adminPw === ADMIN_PASSWORD) { setView("admin"); setError(""); }
+    else setError("Incorrect password.");
   };
 
   // ── Create game ───────────────────────────────────────────────────────────────
@@ -383,7 +551,7 @@ function App() {
     if (!gameName.trim()) return setError("Please enter a game name.");
     setLoading(true); setError("");
     try {
-      const questions = await fetchQuestions(category, difficulty, apiKey);
+      const questions = await fetchQuestions(category, difficulty);
       const code = genCode();
       const g = {
         code, name: gameName.trim(), category, difficulty,
@@ -396,7 +564,7 @@ function App() {
       startPolling(code, true);
       setView("admin-game");
       notify("🎉 Game ready! Share the code with players.");
-    } catch(e) { setError("Failed to generate questions: " + (e.message||"Check your API key and try again.")); }
+    } catch(e) { setError("Failed to generate questions: " + (e.message||"Please try again.")); }
     setLoading(false);
   };
 
@@ -501,22 +669,11 @@ function App() {
           <div className="card card-sm">
             <button className="btn btn-ghost" style={{width:"auto",marginBottom:20}} onClick={()=>setView("landing")}>← Back</button>
             <h2>Admin <span className="accent">Access</span></h2>
-            <p className="muted" style={{margin:"6px 0 24px"}}>Enter your Anthropic API key and admin password</p>
+            <p className="muted" style={{margin:"6px 0 24px"}}>Default password: <code style={{color:"#6c63ff",background:"rgba(108,99,255,.12)",padding:"2px 8px",borderRadius:6}}>admin123</code></p>
             <div className="col">
-              <div>
-                <div className="section-lbl">Anthropic API Key</div>
-                <input className="input" type="password" placeholder="sk-ant-api03-..."
-                  value={apiKey} onChange={e=>setApiKey(e.target.value)}/>
-                <p style={{fontSize:".72rem",color:"rgba(255,255,255,.3)",marginTop:6,lineHeight:1.5}}>
-                  Get your key at <a href="https://console.anthropic.com/keys" target="_blank" style={{color:"#6c63ff"}}>console.anthropic.com/keys</a>. Saved locally in your browser.
-                </p>
-              </div>
-              <div>
-                <div className="section-lbl">Admin Password</div>
-                <input className="input" type="password" placeholder="Default: admin123"
-                  value={adminPw} onChange={e=>setAdminPw(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&adminLogin()}/>
-              </div>
+              <input className="input" type="password" placeholder="Admin password"
+                value={adminPw} onChange={e=>setAdminPw(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&adminLogin()}/>
               {error&&<p style={{color:"#ff4757",fontSize:".85rem"}}>{error}</p>}
               <button className="btn btn-primary" onClick={adminLogin}>Unlock →</button>
             </div>
@@ -613,7 +770,7 @@ function App() {
 
               {error&&<p style={{color:"#ff4757",fontSize:".85rem"}}>{error}</p>}
               <button className="btn btn-primary" disabled={loading} onClick={createGame}>
-                {loading?<><span className="spinner" style={{width:18,height:18,display:"inline-block",marginRight:8,verticalAlign:"middle"}}/>Generating Questions…</>:"🚀 Create Game"}
+                {loading?<><span className="spinner" style={{width:18,height:18,display:"inline-block",marginRight:8,verticalAlign:"middle"}}/>Creating Game…</>:"🚀 Create Game"}
               </button>
             </div>
           </div>
