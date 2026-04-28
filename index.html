@@ -649,6 +649,9 @@ const LETTERS = ["A","B","C","D"];
 // ════════════════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════════════════
+const TIMER_SECONDS = 30;
+let timerInterval = null;
+
 let state = {
   screen: "home",       // home | quiz | result
   catId: null,
@@ -659,6 +662,7 @@ let state = {
   answered: false,
   score: 0,
   history: [],          // array of {correct:bool}
+  timeLeft: 30,
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -669,6 +673,41 @@ function shuffle(arr){ return [...arr].sort(()=>Math.random()-0.5); }
 function pickQuestions(catId, diff){
   const pool = BANK[catId][diff];
   return shuffle(pool).slice(0, Math.min(10, pool.length));
+}
+
+function clearTimer(){
+  if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+}
+
+function startTimer(){
+  clearTimer();
+  state.timeLeft = TIMER_SECONDS;
+  timerInterval = setInterval(()=>{
+    state.timeLeft--;
+    const numEl  = document.getElementById("timer-number");
+    const fillEl = document.getElementById("timer-fill");
+    const wrapEl = document.getElementById("timer-ring-container");
+    if(numEl) numEl.textContent = state.timeLeft;
+    if(fillEl){
+      const pct   = state.timeLeft / TIMER_SECONDS;
+      const circ  = 2 * Math.PI * 30;
+      fillEl.style.strokeDashoffset = circ * (1 - pct);
+      if(pct > 0.5)       fillEl.style.stroke = "#4ade80";
+      else if(pct > 0.25) fillEl.style.stroke = "#f7c948";
+      else                fillEl.style.stroke = "#ef4444";
+      if(wrapEl){
+        if(state.timeLeft <= 5) wrapEl.classList.add("timer-urgent");
+        else                    wrapEl.classList.remove("timer-urgent");
+      }
+    }
+    if(state.timeLeft <= 0){
+      clearTimer();
+      if(!state.answered){
+        const newHistory = [...state.history, {correct:false}];
+        setState({ selected:-1, answered:true, history:newHistory });
+      }
+    }
+  }, 1000);
 }
 
 function setState(partial){
@@ -785,6 +824,17 @@ function renderQuiz(){
   const nextLabel = state.current+1 >= total ? "See Results →" : "Next Question →";
   const nextBtn = state.answered ? `<button class="btn-next" data-action="next">${nextLabel}</button>` : "";
 
+    // Timer ring geometry
+  const CIRC    = 2 * Math.PI * 30;
+  const tPct    = state.answered ? 1 : state.timeLeft / TIMER_SECONDS;
+  const dashOff = state.answered ? 0 : CIRC * (1 - tPct);
+  const tColor  = state.answered ? "#4ade80"
+                : tPct > 0.5    ? "#4ade80"
+                : tPct > 0.25   ? "#f7c948"
+                                 : "#ef4444";
+  const tNumColor = state.answered ? "#4ade80" : tColor;
+  const urgentCls = (!state.answered && state.timeLeft <= 5) ? " timer-urgent" : "";
+
   return `<div class="screen">
     <div class="quiz-header">
       <div class="quiz-meta">
@@ -795,6 +845,22 @@ function renderQuiz(){
         <div class="quiz-progress-fill" style="width:${pct}%"></div>
       </div>
       <div class="quiz-qnum">Question ${state.current+1} of ${total}</div>
+    </div>
+
+    <div class="timer-wrap">
+      <div>
+        <div class="timer-ring-container${urgentCls}" id="timer-ring-container">
+          <svg class="timer-svg" width="72" height="72" viewBox="0 0 72 72">
+            <circle class="timer-track" cx="36" cy="36" r="30"/>
+            <circle class="timer-fill" id="timer-fill" cx="36" cy="36" r="30"
+              style="stroke-dasharray:${CIRC};stroke-dashoffset:${dashOff};stroke:${tColor}"/>
+          </svg>
+          <div class="timer-number" id="timer-number" style="color:${tNumColor}">
+            ${state.answered ? "✓" : state.timeLeft}
+          </div>
+        </div>
+        <div class="timer-label">${state.answered ? "answered" : "seconds left"}</div>
+      </div>
     </div>
 
     <div class="q-card">
@@ -876,11 +942,14 @@ function handleAction(e){
       screen:"quiz",
       questions:qs,
       current:0, selected:null,
-      answered:false, score:0, history:[]
+      answered:false, score:0, history:[],
+      timeLeft: TIMER_SECONDS,
     });
+    startTimer();
   }
   else if(action==="answer"){
     if(state.answered) return;
+    clearTimer();
     const idx = parseInt(btn.dataset.idx);
     const q = state.questions[state.current];
     const correct = idx===q.ans;
@@ -895,15 +964,18 @@ function handleAction(e){
   else if(action==="next"){
     const next = state.current+1;
     if(next>=state.questions.length){
+      clearTimer();
       const pct = (state.score/state.questions.length)*100;
       if(pct>=80) launchConfetti();
       setState({screen:"result"});
     } else {
-      setState({current:next, selected:null, answered:false});
+      setState({current:next, selected:null, answered:false, timeLeft:TIMER_SECONDS});
+      startTimer();
     }
   }
   else if(action==="restart"){
-    setState({screen:"home", catId:null, diff:"easy", questions:[], current:0, selected:null, answered:false, score:0, history:[]});
+    clearTimer();
+    setState({screen:"home", catId:null, diff:"easy", questions:[], current:0, selected:null, answered:false, score:0, history:[], timeLeft:TIMER_SECONDS});
   }
 }
 
